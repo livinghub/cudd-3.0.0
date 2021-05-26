@@ -760,13 +760,13 @@ cuddSwapInPlace(
     yslots = table->subtables[y].slots;
     yshift = table->subtables[y].shift;
 
-    if (!cuddTestInteract(table,xindex,yindex)) { //如果要swap的两个变量不interact
+    if (!cuddTestInteract(table,xindex,yindex)) { //如果要swap的两个变量不interact,x,y直接换名字
 #ifdef DD_STATS
 	table->totalNISwaps++;
 #endif
 	newxkeys = oldxkeys; //x,y的结点个数不改变
 	newykeys = oldykeys;
-    } else { //如果它们是interact的话,
+    } else { //如果它们是interact的话,就执行x,y变量交换处理
 	newxkeys = 0;
 	newykeys = oldykeys;
 
@@ -777,13 +777,15 @@ cuddSwapInPlace(
 	** projection functions from the node count.
 	*/
 	isolated = - ((table->vars[xindex]->ref == 1) +
-		     (table->vars[yindex]->ref == 1));
+		     (table->vars[yindex]->ref == 1)); //暂时计算孤立结点
 
 	/* The nodes in the x layer that do not depend on
 	** y will stay there; the others are put in a chain.
 	** The chain is handled as a LIFO; g points to the beginning.
 	*/
-	g = NULL; //后进先出的链,尾插,指针维持着尾部
+
+	//下面的操作是把与y联系的结点分出来放在g链,与y无关联的x结点继续存放在x子表
+	g = NULL; //后进先出的链,尾插,指针维持着尾部,g链里面的x结点(原来叫x,放入g链就改名为y)是与y相关的
 	if ((oldxkeys >= xslots || (unsigned) xslots == table->initSlots) &&
 	    oldxkeys <= DD_MAX_SUBTABLE_DENSITY * xslots) { //这是子表大小够的情况
 	    for (i = 0; i < xslots; i++) { //遍历x变量子表的槽
@@ -793,17 +795,17 @@ cuddSwapInPlace(
 		    next = f->next;
 		    f1 = cuddT(f); f0 = cuddE(f);
 		    if (f1->index != (DdHalfWord) yindex &&
-			Cudd_Regular(f0)->index != (DdHalfWord) yindex) { //x结点的两个孩子都不是y,把这些结点放在二维指针previousP上
+			Cudd_Regular(f0)->index != (DdHalfWord) yindex) { //x结点的两个孩子都不是y(这个x结点与y没有关系),把这些结点维持在x子表上不变动
 			/* stays */
 			newxkeys++;
-			*previousP = f; //
-			previousP = &(f->next);
-		    } else { //如果x的孩子是y,就把这些结点放在g链
-			f->index = yindex; 
-			f->next = g; 
-			g = f; 
+			*previousP = f; //指针*previousP保持指向冲突链最后一位
+			previousP = &(f->next); //previousP存放链表最后一个结点的下一个结点的地址
+		    } else { //如果x的孩子是y(x结点和y有联系),就把这些结点放在g链,并且这个x的结点会变成y结点
+			f->index = yindex; //x结点直接改名y结点
+			f->next = g; //把改名后的结点插入g链
+			g = f; //g指针保持在g链的尾部
 		    }
-		    f = next;
+		    f = next; //处理下一个x结点
 		} /* while there are elements in the collision chain */
 		*previousP = sentinel;
 	    } /* for each slot of the x subtable */
@@ -825,12 +827,12 @@ cuddSwapInPlace(
 			f->next = h;
 			h = f;
 			newxkeys++;
-		    } else { //与y有关的x结点放在g链
-			f->index = yindex;
-			f->next = g;
-			g = f;
+		    } else { //与y有关的x结点放在g链,并且这些x的结点会变成y结点
+			f->index = yindex; //x结点直接改名y结点
+			f->next = g; //把改名后的结点插入g链
+			g = f; //g指针保持在g链的尾部
 		    }
-		    f = next;
+		    f = next; //处理下一个x结点
 		} /* while there are elements in the collision chain */
 	    } /* for each slot of the x subtable */
 	    /* Decide size of new subtable. */
@@ -867,33 +869,34 @@ cuddSwapInPlace(
 		xlist = newxlist; //这里的x变量子表(链)只有空间没有内容
 	    }
 	    /* Initialize new subtable. */
-	    for (i = 0; i < xslots; i++) { //这位这个x子表是刚刚新建的,初始化子表
+	    for (i = 0; i < xslots; i++) { //这个x子表是刚刚新建的,初始化子表
 		xlist[i] = sentinel;
 	    }
 	    /* Move nodes that were parked in list h to their new home. */
 	    f = h; //h链是x,y结点无关的x链
-	    while (f != NULL) {
+	    while (f != NULL) { //旧链结点搬家到新链(一颗一颗搬)
 		next = f->next;
 		f1 = cuddT(f);
 		f0 = cuddE(f);
 		/* Check xlist for pair (f11,f01). */
-		posn = ddHash(f1, f0, xshift);
+		posn = ddHash(f1, f0, xshift); //算出f的key
 		/* For each element tmp in collision list xlist[posn]. */
-		previousP = &(xlist[posn]);
-		tmp = *previousP;
-		while (f1 < cuddT(tmp)) {
+		previousP = &(xlist[posn]); //把f的冲突链拿出来
+		tmp = *previousP; //取出冲突链链头的结点
+		while (f1 < cuddT(tmp)) { //找到f在冲突链中的位置
 		    previousP = &(tmp->next);
 		    tmp = *previousP;
 		}
-		while (f1 == cuddT(tmp) && f0 < cuddE(tmp)) {
+		while (f1 == cuddT(tmp) && f0 < cuddE(tmp)) { //找到f在冲突链中的位置
 		    previousP = &(tmp->next);
 		    tmp = *previousP;
 		}
-		f->next = *previousP;
-		*previousP = f;
-		f = next;
+		f->next = *previousP; //插入f结点
+		*previousP = f; //把尾指针(下一个要插入结点的前一个指针)移到已插入新结点身上
+		f = next; //f指针指向它的下一颗要搬家的结点
 	    }
 	}
+	//分链完成:与y无关的x结点继续留在子表上,与y有关的x结点放在g链上,放到g链上就改名y了
 
 #ifdef DD_COUNT
 	table->swapSteps += oldxkeys - newxkeys;
@@ -902,18 +905,18 @@ cuddSwapInPlace(
 	** They form a linked list pointed by g. Their index has been
 	** already changed to yindex.
 	*/
-	f = g;
-	while (f != NULL) {
+	f = g; //把g链(以前叫x,现在已经叫y)拿出来处理
+	while (f != NULL) { //逐个结点拿出来
 	    next = f->next;
 	    /* Find f1, f0, f11, f10, f01, f00. */
 	    f1 = cuddT(f);
 #ifdef DD_DEBUG
 	    assert(!(Cudd_IsComplement(f1)));
 #endif
-	    if ((int) f1->index == yindex) {
-		f11 = cuddT(f1); f10 = cuddE(f1);
-	    } else {
-		f11 = f10 = f1;
+	    if ((int) f1->index == yindex) { //如果f的1孩子是y结点的话
+		f11 = cuddT(f1); f10 = cuddE(f1); //那就把它的f11,f10两个孩子给记下来
+	    } else { 						//如果f1不是y结点的话
+		f11 = f10 = f1; //把f11,f10两个孩子指向f1自身
 	    }
 #ifdef DD_DEBUG
 	    assert(!(Cudd_IsComplement(f11)));
@@ -921,63 +924,63 @@ cuddSwapInPlace(
 	    f0 = cuddE(f);
 	    comple = Cudd_IsComplement(f0);
 	    f0 = Cudd_Regular(f0);
-	    if ((int) f0->index == yindex) {
+	    if ((int) f0->index == yindex) { //如果f0孩子是y结点的话
 		f01 = cuddT(f0); f00 = cuddE(f0);
 	    } else {
 		f01 = f00 = f0;
 	    }
-	    if (comple) {
+	    if (comple) { //f0考虑补边
 		f01 = Cudd_Not(f01);
 		f00 = Cudd_Not(f00);
 	    }
 	    /* Decrease ref count of f1. */
 	    cuddSatDec(f1->ref);
-	    /* Create the new T child. */
-	    if (f11 == f01) {
+	    /* Create the new T child. */ //处理结点的1边
+	    if (f11 == f01) { //如果发现f1可以省去,那么f1直接指到f11
 		newf1 = f11;
 		cuddSatInc(newf1->ref);
 	    } else {
 		/* Check xlist for triple (xindex,f11,f01). */
-		posn = ddHash(f11, f01, xshift);
+		posn = ddHash(f11, f01, xshift); //计算有没x结点已经是满足条件,能直接做f1结点
 		/* For each element newf1 in collision list xlist[posn]. */
-		previousP = &(xlist[posn]);
-		newf1 = *previousP;
-		while (f11 < cuddT(newf1)) {
+		previousP = &(xlist[posn]); //如果有结点的孩子刚好是f11和f01的话
+		newf1 = *previousP; //这个结点就是f1结点(y结点的1孩子)了
+		while (f11 < cuddT(newf1)) { //考虑冲突链,定位到准确的结点上
 		    previousP = &(newf1->next);
 		    newf1 = *previousP;
 		}
-		while (f11 == cuddT(newf1) && f01 < cuddE(newf1)) {
+		while (f11 == cuddT(newf1) && f01 < cuddE(newf1)) { //考虑冲突链,定位到准确的结点上
 		    previousP = &(newf1->next);
 		    newf1 = *previousP;
 		}
-		if (cuddT(newf1) == f11 && cuddE(newf1) == f01) {
+		if (cuddT(newf1) == f11 && cuddE(newf1) == f01) { //检查确定这个结点就是y的1孩子f1
 		    cuddSatInc(newf1->ref);
-		} else { /* no match */
+		} else { /* no match */ //如果找不到现有的x结点可以做y的1孩子,那就创建一个新的结点
 		    newf1 = cuddDynamicAllocNode(table);
 		    if (newf1 == NULL)
 			goto cuddSwapOutOfMem;
-		    newf1->index = xindex; newf1->ref = 1;
+		    newf1->index = xindex; newf1->ref = 1; //ref等于1说明它目前还是孤立的
 		    cuddT(newf1) = f11;
 		    cuddE(newf1) = f01;
 		    /* Insert newf1 in the collision list xlist[posn];
 		    ** increase the ref counts of f11 and f01.
 		    */
 		    newxkeys++;
-		    newf1->next = *previousP;
-		    *previousP = newf1;
-		    cuddSatInc(f11->ref);
+		    newf1->next = *previousP; //把新建的x结点插入x子表上
+		    *previousP = newf1; //尾指针调整位置
+		    cuddSatInc(f11->ref); //给这个结点的两个孩子加引用计数
 		    tmp = Cudd_Regular(f01);
 		    cuddSatInc(tmp->ref);
 		}
-	    }
-	    cuddT(f) = newf1;
+	    } //g链上的y结点的1孩子(x结点)处理完成
+	    cuddT(f) = newf1; //把这个x结点作为y的1孩子
 #ifdef DD_DEBUG
 	    assert(!(Cudd_IsComplement(newf1)));
 #endif
 
 	    /* Do the same for f0, keeping complement dots into account. */
 	    /* Decrease ref count of f0. */
-	    tmp = Cudd_Regular(f0);
+	    tmp = Cudd_Regular(f0); //下面是处理g链上的y结点的0孩子
 	    cuddSatDec(tmp->ref);
 	    /* Create the new E child. */
 	    if (f10 == f00) {
@@ -1027,12 +1030,15 @@ cuddSwapInPlace(
 		    newf0 = Cudd_Not(newf0);
 		}
 	    }
-	    cuddE(f) = newf0;
+	    cuddE(f) = newf0; //把这颗x结点作为g链上y结点的0孩子
+		//到这里g链上一个y结点就处理完成了,这颗结点已经有两个孩子了
 
 	    /* Insert the modified f in ylist.
 	    ** The modified f does not already exists in ylist.
 	    ** (Because of the uniqueness of the cofactors.)
 	    */
+
+	    //接着把这个处理完的y结点插入到y子表上
 	    posn = ddHash(newf1, newf0, yshift);
 	    newykeys++;
 	    previousP = &(ylist[posn]);
@@ -1046,32 +1052,33 @@ cuddSwapInPlace(
 		tmp = *previousP;
 	    }
 	    f->next = *previousP;
-	    *previousP = f;
-	    f = next;
-	} /* while f != NULL */
+	    *previousP = f; //到这里y结点已经插入到y子表中合适的位置上
+	    f = next; //接着处理g链上的下一颗结点
+	} /* while f != NULL */ 
+	//整个g链上的y结点都插入到了y子表上
 
 	/* GC the y layer. */
 
 	/* For each node f in ylist. */
-	for (i = 0; i < yslots; i++) {
+	for (i = 0; i < yslots; i++) { //对y子表的各个结点进行遍历,删除没有被引用的y结点
 	    previousP = &(ylist[i]);
 	    f = *previousP;
 	    while (f != sentinel) {
 		next = f->next;
-		if (f->ref == 0) {
+		if (f->ref == 0) { //处理引用计数是0的y结点
 		    tmp = cuddT(f);
-		    cuddSatDec(tmp->ref);
+		    cuddSatDec(tmp->ref); //对这种结点的孩子结点的引用计数减1
 		    tmp = Cudd_Regular(cuddE(f));
-		    cuddSatDec(tmp->ref);
-		    cuddDeallocNode(table,f);
-		    newykeys--;
-		} else {
+		    cuddSatDec(tmp->ref); //对这种结点的孩子结点的引用计数减1
+		    cuddDeallocNode(table,f); //删掉这颗y结点
+		    newykeys--; //更新总结点数
+		} else { //不是就找下一颗
 		    *previousP = f;
 		    previousP = &(f->next);
 		}
 		f = next;
-	    } /* while f */
-	    *previousP = sentinel;
+	    } /* while f */ //到这里引用为0的y结点就全部被删除了
+	    *previousP = sentinel; //链表最后一个结点设置成哨兵
 	} /* for i */
 
 #ifdef DD_DEBUG
@@ -1121,12 +1128,12 @@ cuddSwapInPlace(
 #endif
 
 	isolated += (table->vars[xindex]->ref == 1) +
-		    (table->vars[yindex]->ref == 1);
-	table->isolated += (unsigned int) isolated;
-    }
+		    (table->vars[yindex]->ref == 1); //计数唯一表中孤立结点的数量
+	table->isolated += (unsigned int) isolated; //更新唯一表中孤立结点的数量
+    } //到这里为止,x,y变量完成了结点的交换操作
 
     /* Set the appropriate fields in table. */
-    table->subtables[x].nodelist = ylist;
+    table->subtables[x].nodelist = ylist; //因为完成了x,y变量的交换,原来x的记录全部换成y,y的记录也要换x
     table->subtables[x].slots = yslots;
     table->subtables[x].shift = yshift;
     table->subtables[x].keys = newykeys;
@@ -1159,7 +1166,7 @@ cuddSwapInPlace(
 
     table->keys += newxkeys + newykeys - oldxkeys - oldykeys;
 
-    return((int)(table->keys - table->isolated));
+    return((int)(table->keys - table->isolated)); //swap成功,返回目前唯一表除去了孤立结点的结点数
 
 cuddSwapOutOfMem:
     (void) fprintf(table->err,"Error: cuddSwapInPlace out of memory\n");
