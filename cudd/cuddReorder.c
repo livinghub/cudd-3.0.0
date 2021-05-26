@@ -725,9 +725,9 @@ cuddSwapInPlace(
     int    isolated;
     DdNode *f,*f0,*f1,*f01,*f00,*f11,*f10,*newf1,*newf0;
     DdNode *g,*next;
-    DdNodePtr *previousP;
+    DdNodePtr *previousP; //这是二维指针
     DdNode *tmp;
-    DdNode *sentinel = &(table->sentinel);
+    DdNode *sentinel = &(table->sentinel); //冲突链的哨兵(最后一个)
     extern DD_OOMFP MMoutOfMemory;
     DD_OOMFP saveHandler;
 
@@ -744,14 +744,14 @@ cuddSwapInPlace(
     assert(table->subtables[y].dead == 0);
 #endif
 
-    table->ddTotalNumberSwapping++;
+    table->ddTotalNumberSwapping++; //swap成功记录加1
 
     /* Get parameters of x subtable. */
-    xindex = table->invperm[x];
-    xlist = table->subtables[x].nodelist;
-    oldxkeys = table->subtables[x].keys;
-    xslots = table->subtables[x].slots;
-    xshift = table->subtables[x].shift;
+    xindex = table->invperm[x]; //获取变量的index
+    xlist = table->subtables[x].nodelist; //获取x变量的整个子表(x结点链表)
+    oldxkeys = table->subtables[x].keys; //获取x变量的结点个数
+    xslots = table->subtables[x].slots; //获取子表的大小
+    xshift = table->subtables[x].shift; //这个帮助计算hash的key
 
     /* Get parameters of y subtable. */
     yindex = table->invperm[y];
@@ -760,13 +760,13 @@ cuddSwapInPlace(
     yslots = table->subtables[y].slots;
     yshift = table->subtables[y].shift;
 
-    if (!cuddTestInteract(table,xindex,yindex)) {
+    if (!cuddTestInteract(table,xindex,yindex)) { //如果要swap的两个变量不interact
 #ifdef DD_STATS
 	table->totalNISwaps++;
 #endif
-	newxkeys = oldxkeys;
+	newxkeys = oldxkeys; //x,y的结点个数不改变
 	newykeys = oldykeys;
-    } else {
+    } else { //如果它们是interact的话,
 	newxkeys = 0;
 	newykeys = oldykeys;
 
@@ -783,49 +783,49 @@ cuddSwapInPlace(
 	** y will stay there; the others are put in a chain.
 	** The chain is handled as a LIFO; g points to the beginning.
 	*/
-	g = NULL;
+	g = NULL; //后进先出的链,尾插,指针维持着尾部
 	if ((oldxkeys >= xslots || (unsigned) xslots == table->initSlots) &&
-	    oldxkeys <= DD_MAX_SUBTABLE_DENSITY * xslots) {
-	    for (i = 0; i < xslots; i++) {
-		previousP = &(xlist[i]);
-		f = *previousP;
+	    oldxkeys <= DD_MAX_SUBTABLE_DENSITY * xslots) { //这是子表大小够的情况
+	    for (i = 0; i < xslots; i++) { //遍历x变量子表的槽
+		previousP = &(xlist[i]); //取出某个结点的冲突链
+		f = *previousP; //x结点冲突链给f
 		while (f != sentinel) {
 		    next = f->next;
 		    f1 = cuddT(f); f0 = cuddE(f);
 		    if (f1->index != (DdHalfWord) yindex &&
-			Cudd_Regular(f0)->index != (DdHalfWord) yindex) {
+			Cudd_Regular(f0)->index != (DdHalfWord) yindex) { //x结点的两个孩子都不是y,把这些结点放在二维指针previousP上
 			/* stays */
 			newxkeys++;
-			*previousP = f;
+			*previousP = f; //
 			previousP = &(f->next);
-		    } else {
-			f->index = yindex;
-			f->next = g;
-			g = f;
+		    } else { //如果x的孩子是y,就把这些结点放在g链
+			f->index = yindex; 
+			f->next = g; 
+			g = f; 
 		    }
 		    f = next;
 		} /* while there are elements in the collision chain */
 		*previousP = sentinel;
 	    } /* for each slot of the x subtable */
-	} else {		/* resize xlist */
+	} else {		/* resize xlist */ //子表大小情况不够
 	    DdNode *h = NULL;
-	    DdNodePtr *newxlist;
+	    DdNodePtr *newxlist; //打算生成一条新表(链)
 	    unsigned int newxslots;
 	    int newxshift;
 	    /* Empty current xlist. Nodes that stay go to list h;
 	    ** nodes that move go to list g. */
-	    for (i = 0; i < xslots; i++) {
-		f = xlist[i];
-		while (f != sentinel) {
+	    for (i = 0; i < xslots; i++) { //把x变量的子链逐个遍历
+		f = xlist[i]; //把子链拿出来
+		while (f != sentinel) { //遍历子链
 		    next = f->next;
 		    f1 = cuddT(f); f0 = cuddE(f);
 		    if (f1->index != (DdHalfWord) yindex &&
-			Cudd_Regular(f0)->index != (DdHalfWord) yindex) {
+			Cudd_Regular(f0)->index != (DdHalfWord) yindex) { //把与y无关的x结点放在h链
 			/* stays */
 			f->next = h;
 			h = f;
 			newxkeys++;
-		    } else {
+		    } else { //与y有关的x结点放在g链
 			f->index = yindex;
 			f->next = g;
 			g = f;
@@ -836,23 +836,23 @@ cuddSwapInPlace(
 	    /* Decide size of new subtable. */
 	    newxshift = xshift;
 	    newxslots = xslots;
-	    while ((unsigned) oldxkeys > DD_MAX_SUBTABLE_DENSITY * newxslots) {
+	    while ((unsigned) oldxkeys > DD_MAX_SUBTABLE_DENSITY * newxslots) { //如果新表放不下结点,增大新表的大小
 		newxshift--;
 		newxslots <<= 1;
 	    }
 	    while ((unsigned) oldxkeys < newxslots &&
-		   newxslots > table->initSlots) {
+		   newxslots > table->initSlots) { //稍微缩减一下新表的大小
 		newxshift++;
 		newxslots >>= 1;
 	    }
 	    /* Try to allocate new table. Be ready to back off. */
 	    saveHandler = MMoutOfMemory;
 	    MMoutOfMemory = table->outOfMemCallback;
-	    newxlist = ALLOC(DdNodePtr, newxslots);
+	    newxlist = ALLOC(DdNodePtr, newxslots); //给新表分配空间
 	    MMoutOfMemory = saveHandler;
-	    if (newxlist == NULL) {
+	    if (newxlist == NULL) { //是否成功分配空间
 		(void) fprintf(table->err, "Unable to resize subtable %d for lack of memory\n", i);
-	    } else {
+	    } else { //如果成功分配了空间,更新一下DDM的信息,包括有唯一表的总槽数,最小死结点数,可用的槽数,总使用空间
 		table->slots += ((int) newxslots - xslots);
 		table->minDead = (unsigned)
 		    (table->gcFrac * (double) table->slots);
@@ -861,17 +861,17 @@ cuddSwapInPlace(
 			  * table->slots) - 2 * (int) table->cacheSlots;
 		table->memused +=
 		    ((int) newxslots - xslots) * sizeof(DdNodePtr);
-		FREE(xlist);
-		xslots =  newxslots;
+		FREE(xlist); //可以把原来的x变量链的内存给释放掉(因为里面的东西都放在h链和g链)
+		xslots =  newxslots; //把x变量链的记录更新一下
 		xshift = newxshift;
-		xlist = newxlist;
+		xlist = newxlist; //这里的x变量子表(链)只有空间没有内容
 	    }
 	    /* Initialize new subtable. */
-	    for (i = 0; i < xslots; i++) {
+	    for (i = 0; i < xslots; i++) { //这位这个x子表是刚刚新建的,初始化子表
 		xlist[i] = sentinel;
 	    }
 	    /* Move nodes that were parked in list h to their new home. */
-	    f = h;
+	    f = h; //h链是x,y结点无关的x链
 	    while (f != NULL) {
 		next = f->next;
 		f1 = cuddT(f);

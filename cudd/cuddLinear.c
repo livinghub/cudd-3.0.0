@@ -208,19 +208,19 @@ cuddLinearAndSifting(
     table->totalNumberLinearTr = 0;
 #endif
 
-    size = table->size;
+    size = table->size; //变量数
 
     var = NULL;
-    if (table->linear == NULL) {
-	result = cuddInitLinear(table);
+    if (table->linear == NULL) { //在这里就是判断变换矩阵创建了没有
+	result = cuddInitLinear(table); //没有就初始化一个
 	if (result == 0) goto cuddLinearAndSiftingOutOfMem;
 #if 0
 	(void) fprintf(table->out,"\n");
 	result = Cudd_PrintLinear(table);
 	if (result == 0) goto cuddLinearAndSiftingOutOfMem;
 #endif
-    } else if (table->size != table->linearSize) {
-	result = cuddResizeLinear(table);
+    } else if (table->size != table->linearSize) { //判断子表(变量)的数目和变换矩阵的行列数是否一致
+	result = cuddResizeLinear(table); //不一致就resize变换矩阵
 	if (result == 0) goto cuddLinearAndSiftingOutOfMem;
 #if 0
 	(void) fprintf(table->out,"\n");
@@ -230,28 +230,28 @@ cuddLinearAndSifting(
     }
 
     /* Find order in which to sift variables. */
-    var = ALLOC(IndexKey,size);
+    var = ALLOC(IndexKey,size); //IndexKey是一个结构体,用来重排时记录变量
     if (var == NULL) {
 	table->errorCode = CUDD_MEMORY_OUT;
 	goto cuddLinearAndSiftingOutOfMem;
     }
 
-    for (i = 0; i < size; i++) {
-	x = table->perm[i];
-	var[i].index = i;
-	var[i].keys = table->subtables[x].keys;
+    for (i = 0; i < size; i++) { //对每一个变量
+	x = table->perm[i]; //取出在排列中第i个变量(相当于BDD的第i层的变量是什么)
+	var[i].index = i; //给要排序的变量附上index
+	var[i].keys = table->subtables[x].keys; //给每个要排序的变量附上对应的keys(这个变量拥有的结点数量)
     }
 
-    util_qsort(var,size,sizeof(IndexKey),ddLinearUniqueCompare);
+    util_qsort(var,size,sizeof(IndexKey),ddLinearUniqueCompare); //对变量进行快排,排序标准:结点数相近的变量放一起
 
     /* Now sift. */
-    for (i = 0; i < ddMin(table->siftMaxVar,size); i++) {
-	x = table->perm[var[i].index];
-	if (x < lower || x > upper) continue;
+    for (i = 0; i < ddMin(table->siftMaxVar,size); i++) { //确定参与sift的变量个数
+	x = table->perm[var[i].index]; //把在var的变量一个个拿出来
+	if (x < lower || x > upper) continue; //检测没有超过边界
 #ifdef DD_STATS
 	previousSize = (int) (table->keys - table->isolated);
 #endif
-	result = ddLinearAndSiftingAux(table,x,lower,upper);
+	result = ddLinearAndSiftingAux(table,x,lower,upper); //传进当前选中的变量,在边界范围内上下swap
 	if (!result) goto cuddLinearAndSiftingOutOfMem;
 #ifdef DD_STATS
 	if (table->keys < (unsigned) previousSize + table->isolated) {
@@ -699,31 +699,31 @@ int
 cuddInitLinear(
   DdManager * table)
 {
-    int words;
-    int wordsPerRow;
-    int nvars;
-    int word;
+    int words; //words*64(32)就是矩阵的单元数,其实是用bit表示单元,一个字有64(32)个bit
+    int wordsPerRow; //矩阵每行的变量数
+    int nvars; //子表的数量，那就是变量的数量咯，也就是矩阵的行数咯
+    int word; 
     int bit;
     int i;
     ptruint *linear;
 
-    nvars = table->size;
-    wordsPerRow = ((nvars - 1) >> LOGBPL) + 1;
-    words = wordsPerRow * nvars;
-    table->linear = linear = ALLOC(ptruint,words);
+    nvars = table->size; //矩阵的行列数就是子表的数目
+    wordsPerRow = ((nvars - 1) >> LOGBPL) + 1; //算出每一行要多少个字
+    words = wordsPerRow * nvars; //总共要多少个字
+    table->linear = linear = ALLOC(ptruint,words); //这个矩阵是一维数组,那就是每个单元都是bit大,一共有words*64(32)多个单元
     if (linear == NULL) {
-	table->errorCode = CUDD_MEMORY_OUT;
-	return(0);
+    table->errorCode = CUDD_MEMORY_OUT;
+    return(0);
     }
-    table->memused += words * sizeof(ptruint);
-    table->linearSize = nvars;
-    for (i = 0; i < words; i++) linear[i] = 0;
+    table->memused += words * sizeof(ptruint); //这个是更新ddmanger的内存占用
+    table->linearSize = nvars; //更新ddm的矩阵的行列数
+    for (i = 0; i < words; i++) linear[i] = 0; //把矩阵所有单元都置0
     for (i = 0; i < nvars; i++) {
-	word = wordsPerRow * i + (i >> LOGBPL);
-	bit  = i & (BPL-1);
-	linear[word] = (ptruint) 1 << bit;
+	word = wordsPerRow * i + (i >> LOGBPL); //这是算它对第几个字进行赋值
+	bit  = i & (BPL-1); //这是算它在字里面的哪一个位赋值
+	linear[word] = (ptruint) 1 << bit; //对矩阵进行赋值
     }
-    return(1);
+    return(1); //初始化成功后的矩阵应该是对角线为一的规范矩阵
 
 } /* end of cuddInitLinear */
 
@@ -848,42 +848,42 @@ ddLinearAndSiftingAux(
     int		initialSize;
     int		result;
 
-    initialSize = (int) (table->keys - table->isolated);
+    initialSize = (int) (table->keys - table->isolated); //整个表的结点数-整个表的孤立结点数
 
     moveDown = NULL;
     moveUp = NULL;
 
-    if (x == xLow) {
-	moveDown = ddLinearAndSiftingDown(table,x,xHigh,NULL);
+    if (x == xLow) { //选中的变量就是低边界变量
+	moveDown = ddLinearAndSiftingDown(table,x,xHigh,NULL); //选中变量往高边界走
 	/* At this point x --> xHigh unless bounding occurred. */
 	if (moveDown == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
 	/* Move backward and stop at best position. */
-	result = ddLinearAndSiftingBackward(table,initialSize,moveDown);
+	result = ddLinearAndSiftingBackward(table,initialSize,moveDown); //回到记录到最好的位置
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
 
     } else if (x == xHigh) {
-	moveUp = ddLinearAndSiftingUp(table,x,xLow,NULL);
+	moveUp = ddLinearAndSiftingUp(table,x,xLow,NULL); //选中变量往线性筛选
 	/* At this point x --> xLow unless bounding occurred. */
 	if (moveUp == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
 	/* Move backward and stop at best position. */
-	result = ddLinearAndSiftingBackward(table,initialSize,moveUp);
+	result = ddLinearAndSiftingBackward(table,initialSize,moveUp); //回到记录到的最好位置
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
 
-    } else if ((x - xLow) > (xHigh - x)) { /* must go down first: shorter */
-	moveDown = ddLinearAndSiftingDown(table,x,xHigh,NULL);
+    } else if ((x - xLow) > (xHigh - x)) { /* must go down first: shorter */ //x离下边界更近,往下走
+	moveDown = ddLinearAndSiftingDown(table,x,xHigh,NULL); //记录下移动顺序和变换后的大小
 	/* At this point x --> xHigh unless bounding occurred. */
 	if (moveDown == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
-	moveUp = ddUndoMoves(table,moveDown);
+	moveUp = ddUndoMoves(table,moveDown); //返回向上移动的序列
 #ifdef DD_DEBUG
 	assert(moveUp == NULL || moveUp->x == (DdHalfWord) x);
 #endif
-	moveUp = ddLinearAndSiftingUp(table,x,xLow,moveUp);
+	moveUp = ddLinearAndSiftingUp(table,x,xLow,moveUp); //接着向上移动
 	if (moveUp == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
 	/* Move backward and stop at best position. */
-	result = ddLinearAndSiftingBackward(table,initialSize,moveUp);
+	result = ddLinearAndSiftingBackward(table,initialSize,moveUp); //回到最好位置
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
 
-    } else { /* must go up first: shorter */
+    } else { /* must go up first: shorter */ //优先向上移动
 	moveUp = ddLinearAndSiftingUp(table,x,xLow,NULL);
 	/* At this point x --> xLow unless bounding occurred. */
 	if (moveUp == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
@@ -1069,7 +1069,7 @@ ddLinearAndSiftingDown(
   Move * prevMoves)
 {
     Move	*moves;
-    Move	*move;
+    Move	*move; 
     int		y;
     int		size, newsize;
     int		R;	/* upper bound on node decrease */
@@ -1084,19 +1084,19 @@ ddLinearAndSiftingDown(
 
     moves = prevMoves;
     /* Initialize R */
-    xindex = table->invperm[x];
-    limitSize = size = table->keys - table->isolated;
+    xindex = table->invperm[x]; //在列表中取出变量X的index
+    limitSize = size = table->keys - table->isolated; //最大结点处理数
     R = 0;
     for (y = xHigh; y > x; y--) {
-	yindex = table->invperm[y];
-	if (cuddTestInteract(table,xindex,yindex)) {
-	    isolated = table->vars[yindex]->ref == 1;
-	    R += table->subtables[y].keys - isolated;
+	yindex = table->invperm[y]; //取出变量y的index
+	if (cuddTestInteract(table,xindex,yindex)) { //如果x和y是interact的话
+	    isolated = table->vars[yindex]->ref == 1; //如果变量y的引用计数等于1的话，它就是isolated的
+	    R += table->subtables[y].keys - isolated; //更新要处理的结点个数
 	}
     }
 
-    y = cuddNextHigh(table,x);
-    while (y <= xHigh && size - R < limitSize) {
+    y = cuddNextHigh(table,x); //下一个子表(变量)
+    while (y <= xHigh && size - R < limitSize) { //y在边界内,且需要执行变换
 #ifdef DD_DEBUG
 	checkR = 0;
 	for (z = xHigh; z > x; z--) {
@@ -1111,12 +1111,12 @@ ddLinearAndSiftingDown(
 	}
 #endif
 	/* Update upper bound on node decrease. */
-	yindex = table->invperm[y];
-	if (cuddTestInteract(table,xindex,yindex)) {
+	yindex = table->invperm[y]; //取出y变量的index
+	if (cuddTestInteract(table,xindex,yindex)) { //更新需要处理结点的个数,如果x和y是interact但是y是isolate的话,需要处理的结点数就减1
 	    isolated = table->vars[yindex]->ref == 1;
 	    R -= (int) table->subtables[y].keys - isolated;
 	}
-	size = cuddSwapInPlace(table,x,y);
+	size = cuddSwapInPlace(table,x,y); //交换x和y两个变量
 	if (size == 0) goto ddLinearAndSiftingDownOutOfMem;
 	newsize = cuddLinearInPlace(table,x,y);
 	if (newsize == 0) goto ddLinearAndSiftingDownOutOfMem;

@@ -238,7 +238,7 @@ typedef struct DdLocalCacheItem DdLocalCacheItem;
 typedef struct DdLocalCache DdLocalCache;
 typedef struct DdHashItem DdHashItem;
 typedef struct DdHashTable DdHashTable;
-typedef struct Move Move;
+typedef struct Move Move; //记录哪两个变量做了处理(swap/LT),处理后的结点个数
 typedef struct IndexKey IndexKey;
 typedef struct DdQueueItem DdQueueItem;
 typedef struct DdLevelQueue DdLevelQueue;
@@ -440,7 +440,7 @@ struct DdManager {
     double reclaimed;		/**< number of nodes brought back from the dead */
     int *perm;			/**< current variable perm. (index to level) */
     int *permZ;			/**< for %ZDD */
-    int *invperm;		/**< current inv. var. perm. (level to index) */
+    int *invperm;		/**< current inv. var. perm. (level to index) */ //存放变量的index的队列
     int *invpermZ;		/**< for %ZDD */
     DdNode **vars;		/**< projection functions */
     int *map;			/**< variable map for fast swap */
