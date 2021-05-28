@@ -238,8 +238,8 @@ typedef struct DdLocalCacheItem DdLocalCacheItem;
 typedef struct DdLocalCache DdLocalCache;
 typedef struct DdHashItem DdHashItem;
 typedef struct DdHashTable DdHashTable;
-typedef struct Move Move; //记录哪两个变量做了处理(swap/LT),处理后的结点个数
-typedef struct IndexKey IndexKey;
+typedef struct Move Move; //变换记录,记录哪两个变量做了处理(swap/LT),处理后的结点个数
+typedef struct IndexKey IndexKey; //记录变量的索引(index)和变量对应结点的个数(key),帮助reordering
 typedef struct DdQueueItem DdQueueItem;
 typedef struct DdLevelQueue DdLevelQueue;
 
@@ -442,7 +442,7 @@ struct DdManager {
     int *permZ;			/**< for %ZDD */
     int *invperm;		/**< current inv. var. perm. (level to index) */ //存放变量的index的队列
     int *invpermZ;		/**< for %ZDD */
-    DdNode **vars;		/**< projection functions */
+    DdNode **vars;		/**< projection functions */ //记录某个变量是不是投影函数(f(xi)=xi)(这种变量只有一个结点)
     int *map;			/**< variable map for fast swap */
     DdNode **univ;		/**< %ZDD 1 for each variable */
     unsigned int isolated;	/**< isolated projection functions */
@@ -451,9 +451,9 @@ struct DdManager {
     ptruint *interact;		/**< interacting variable matrix */
     ptruint *linear;		/**< linear transform matrix */
     /* Memory Management */
-    DdNode **memoryList;	/**< memory manager for symbol table */
-    DdNode *nextFree;		/**< list of free nodes */
-    char *stash;		/**< memory reserve */
+    DdNode **memoryList;	/**< memory manager for symbol table */ //分配好的,能用的内存块
+    DdNode *nextFree;		/**< list of free nodes */ //自由结点链,垃圾回收后的结点也先放在这里
+    char *stash;		/**< memory reserve */ //内存储备
 #ifndef DD_NO_DEATH_ROW
     DdNode **deathRow;		/**< queue for dereferencing */
     int deathRowDepth;		/**< number of slots in the queue */
@@ -567,8 +567,8 @@ struct DdManager {
 struct Move {
     DdHalfWord x;
     DdHalfWord y;
-    unsigned int flags;
-    int size;
+    unsigned int flags; //记录处理变换的类型(swap/LT)
+    int size; //记录这次变换后唯一表的结点数(不包含孤立的结点)
     struct Move *next;
 };
 

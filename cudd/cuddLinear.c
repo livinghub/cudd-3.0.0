@@ -230,13 +230,13 @@ cuddLinearAndSifting(
     }
 
     /* Find order in which to sift variables. */
-    var = ALLOC(IndexKey,size); //IndexKey是一个结构体,用来重排时记录变量
+    var = ALLOC(IndexKey,size); //新建一条用于排序的变量链
     if (var == NULL) {
 	table->errorCode = CUDD_MEMORY_OUT;
 	goto cuddLinearAndSiftingOutOfMem;
     }
 
-    for (i = 0; i < size; i++) { //对每一个变量
+    for (i = 0; i < size; i++) { //给变量链赋值
 	x = table->perm[i]; //取出在排列中第i个变量(相当于BDD的第i层的变量是什么)
 	var[i].index = i; //给要排序的变量附上index
 	var[i].keys = table->subtables[x].keys; //给每个要排序的变量附上对应的keys(这个变量拥有的结点数量)
@@ -341,20 +341,20 @@ cuddLinearInPlace(
     assert(table->subtables[y].dead == 0);
 #endif
 
-    xindex = table->invperm[x];
+    xindex = table->invperm[x]; //取出要处理变量的index
     yindex = table->invperm[y];
 
-    if (cuddTestInteract(table,xindex,yindex)) {
+    if (cuddTestInteract(table,xindex,yindex)) { //只对interact的变量进行LT(显然)
 #ifdef DD_STATS
 	table->totalNumberLinearTr++;
 #endif
 	/* Get parameters of x subtable. */
-	xlist = table->subtables[x].nodelist;
+	xlist = table->subtables[x].nodelist; //把x结点链取出
 #if defined(DD_COUNT) || defined(DD_DEBUG)
 	oldxkeys = table->subtables[x].keys;
 #endif
-	xslots = table->subtables[x].slots;
-	xshift = table->subtables[x].shift;
+	xslots = table->subtables[x].slots; //x子表的槽数
+	xshift = table->subtables[x].shift; //x的哈希辅助
 
 	/* Get parameters of y subtable. */
 	ylist = table->subtables[y].nodelist;
@@ -362,8 +362,8 @@ cuddLinearInPlace(
 	yslots = table->subtables[y].slots;
 	yshift = table->subtables[y].shift;
 
-	newxkeys = 0;
-	newykeys = oldykeys;
+	newxkeys = 0; //因为x子表是要重建的
+	newykeys = oldykeys; //y子表不用变化
 
 	/* Check whether the two projection functions involved in this
 	** swap are isolated. At the end, we'll be able to tell how many
@@ -372,36 +372,37 @@ cuddLinearInPlace(
 	** projection functions from the node count.
 	*/
 	isolated = - ((table->vars[xindex]->ref == 1) +
-		     (table->vars[yindex]->ref == 1));
+		     (table->vars[yindex]->ref == 1)); //暂时对孤立结点处理
 
 	/* The nodes in the x layer are put in a chain.
 	** The chain is handled as a FIFO; g points to the beginning and
 	** last points to the end.
 	*/
-	g = NULL;
+	g = NULL; //g链存放x结点,先进先出链,g指针保持在链头,last指针保持在链尾
 #ifdef DD_DEBUG
 	last = NULL;
 #endif
-	for (i = 0; i < xslots; i++) {
+	for (i = 0; i < xslots; i++) { //遍历x子表的各个槽
 	    f = xlist[i];
 	    if (f == sentinel) continue;
-	    xlist[i] = sentinel;
-	    if (g == NULL) {
+	    xlist[i] = sentinel; //因为x子表要重建,所以各个冲突链都要摘掉
+	    if (g == NULL) { //把摘出来的x结点放在g链
 		g = f;
 	    } else {
-		last->next = f;
+		last->next = f; //插在g链的尾部
 	    }
-	    while ((next = f->next) != sentinel) {
+	    while ((next = f->next) != sentinel) { //每条冲突链只拿第一个结点
 		f = next;
 	    } /* while there are elements in the collision chain */
 	    last = f;
 	} /* for each slot of the x subtable */
+	//到这里就把x子表的每个槽的第一个结点拿出来,并且x子表只留下槽位,内容清零了.x子表每条冲突链的第一个结点都放在g链上
 #ifdef DD_DEBUG
 	/* last is always assigned in the for loop because there is at
 	** least one key */
 	assert(last != NULL);
 #endif
-	last->next = NULL;
+	last->next = NULL; //最后一个结点的下一个指针指向null
 
 #ifdef DD_COUNT
 	table->swapSteps += oldxkeys;
@@ -409,15 +410,15 @@ cuddLinearInPlace(
 	/* Take care of the x nodes that must be re-expressed.
 	** They form a linked list pointed by g.
 	*/
-	f = g;
-	while (f != NULL) {
+	f = g; //开始对g链处理
+	while (f != NULL) { //把g链的结点逐个拿出来
 	    next = f->next;
 	    /* Find f1, f0, f11, f10, f01, f00. */
-	    f1 = cuddT(f);
+	    f1 = cuddT(f); //拿出x结点的f1孩子
 #ifdef DD_DEBUG
 	    assert(!(Cudd_IsComplement(f1)));
 #endif
-	    if ((int) f1->index == yindex) {
+	    if ((int) f1->index == yindex) { //如果x结点的f1孩子y结点
 		f11 = cuddT(f1); f10 = cuddE(f1);
 	    } else {
 		f11 = f10 = f1;
@@ -425,7 +426,7 @@ cuddLinearInPlace(
 #ifdef DD_DEBUG
 	    assert(!(Cudd_IsComplement(f11)));
 #endif
-	    f0 = cuddE(f);
+	    f0 = cuddE(f); //x结点的0孩子
 	    comple = Cudd_IsComplement(f0);
 	    f0 = Cudd_Regular(f0);
 	    if ((int) f0->index == yindex) {
@@ -438,14 +439,14 @@ cuddLinearInPlace(
 		f00 = Cudd_Not(f00);
 	    }
 	    /* Decrease ref count of f1. */
-	    cuddSatDec(f1->ref);
+	    cuddSatDec(f1->ref); //断开x结点的1边
 	    /* Create the new T child. */
-	    if (f11 == f00) {
+	    if (f11 == f00) { //如果f11和f00相等的话，说明f1可以约减
 		newf1 = f11;
-		cuddSatInc(newf1->ref);
+		cuddSatInc(newf1->ref); //增加引用计数
 	    } else {
 		/* Check ylist for triple (yindex,f11,f00). */
-		posn = ddHash(f11, f00, yshift);
+		posn = ddHash(f11, f00, yshift); //找有没有现存的y结点可以做f1结点
 		/* For each element newf1 in collision list ylist[posn]. */
 		previousP = &(ylist[posn]);
 		newf1 = *previousP;
@@ -457,9 +458,9 @@ cuddLinearInPlace(
 		    previousP = &(newf1->next);
 		    newf1 = *previousP;
 		}
-		if (cuddT(newf1) == f11 && cuddE(newf1) == f00) {
+		if (cuddT(newf1) == f11 && cuddE(newf1) == f00) { //这里是找到现存的y结点可以做f1
 		    cuddSatInc(newf1->ref);
-		} else { /* no match */
+		} else { /* no match */ //找不到的话,创建一颗新的y结点做f1结点
 		    newf1 = cuddDynamicAllocNode(table);
 		    if (newf1 == NULL)
 			goto cuddLinearOutOfMem;
@@ -469,19 +470,19 @@ cuddLinearInPlace(
 		    /* Insert newf1 in the collision list ylist[posn];
 		    ** increase the ref counts of f11 and f00.
 		    */
-		    newykeys++;
-		    newf1->next = *previousP;
-		    *previousP = newf1;
-		    cuddSatInc(f11->ref);
+		    newykeys++; //结点数加1
+		    newf1->next = *previousP; //把这颗新的y结点插入到冲突链的链尾
+		    *previousP = newf1; //更新队尾指针位置
+		    cuddSatInc(f11->ref); //f1的两个孩子引用要加1
 		    tmp = Cudd_Regular(f00);
 		    cuddSatInc(tmp->ref);
 		}
-	    }
-	    cuddT(f) = newf1;
+	    } //到这里f结点(g链上的一颗结点(x结点))的f1孩子就处理完成了
+	    cuddT(f) = newf1; //把处理好的f1结点作为f的1孩子
 #ifdef DD_DEBUG
 	    assert(!(Cudd_IsComplement(newf1)));
 #endif
-
+		//下面就是同样的过程处理f0结点
 	    /* Do the same for f0, keeping complement dots into account. */
 	    /* decrease ref count of f0 */
 	    tmp = Cudd_Regular(f0);
@@ -534,38 +535,41 @@ cuddLinearInPlace(
 		    newf0 = Cudd_Not(newf0);
 		}
 	    }
-	    cuddE(f) = newf0;
+	    cuddE(f) = newf0; //把处理好的f0结点作为f的0孩子
 
 	    /* Re-insert the modified f in xlist.
 	    ** The modified f does not already exists in xlist.
 	    ** (Because of the uniqueness of the cofactors.)
 	    */
+	    //把这颗处理完(包括结点的孩子)的f结点(x结点),放入到之前已经清空内容只保留槽位的x子表上
 	    posn = ddHash(newf1, newf0, xshift);
 	    newxkeys++;
 	    previousP = &(xlist[posn]);
 	    tmp = *previousP;
-	    while (newf1 < cuddT(tmp)) {
+	    while (newf1 < cuddT(tmp)) { //寻找合适位置
 		previousP = &(tmp->next);
 		tmp = *previousP;
 	    }
-	    while (newf1 == cuddT(tmp) && newf0 < cuddE(tmp)) {
+	    while (newf1 == cuddT(tmp) && newf0 < cuddE(tmp)) { //寻找合适位置
 		previousP = &(tmp->next);
 		tmp = *previousP;
 	    }
-	    f->next = *previousP;
-	    *previousP = f;
-	    f = next;
+	    f->next = *previousP; //把结点插入到子表的冲突链中
+	    *previousP = f; //调整队尾指针位置
+	    f = next; //接着处理下一个结点
 	} /* while f != NULL */
+	//到这里,放在g链中的x结点已经重新处理并放回x子表上
 
 	/* GC the y layer. */
 
 	/* For each node f in ylist. */
+	//这里把y子表中引用为0的y结点给释放掉
 	for (i = 0; i < yslots; i++) {
 	    previousP = &(ylist[i]);
 	    f = *previousP;
 	    while (f != sentinel) {
 		next = f->next;
-		if (f->ref == 0) {
+		if (f->ref == 0) { //释放y结点的操作,包括对它孩子结点的引用计数减1
 		    tmp = cuddT(f);
 		    cuddSatDec(tmp->ref);
 		    tmp = Cudd_Regular(cuddE(f));
@@ -620,20 +624,20 @@ cuddLinearInPlace(
 #endif
 
 	isolated += (table->vars[xindex]->ref == 1) +
-		    (table->vars[yindex]->ref == 1);
-	table->isolated += (unsigned int) isolated;
+		    (table->vars[yindex]->ref == 1); //计算本次操作产生的孤立结点个数
+	table->isolated += (unsigned int) isolated; //更新唯一表(总表)中的孤立结点数目
 
 	/* Set the appropriate fields in table. */
-	table->subtables[y].keys = newykeys;
+	table->subtables[y].keys = newykeys; //更新y子表的结点个数
 
 	/* Here we should update the linear combination table
 	** to record that x <- x EXNOR y. This is done by complementing
 	** the (x,y) entry of the table.
 	*/
 
-	table->keys += newykeys - oldykeys;
+	table->keys += newykeys - oldykeys; //更新总表(唯一表)的总结点个数
 
-	cuddXorLinear(table,xindex,yindex);
+	cuddXorLinear(table,xindex,yindex); //更新线性矩阵
     }
 
 #ifdef DD_DEBUG
@@ -701,24 +705,24 @@ cuddInitLinear(
 {
     int words; //words*64(32)就是矩阵的单元数,其实是用bit表示单元,一个字有64(32)个bit
     int wordsPerRow; //矩阵每行的变量数
-    int nvars; //子表的数量，那就是变量的数量咯，也就是矩阵的行数咯
+    int nvars; //子表的数量，那就是变量的个数
     int word; 
     int bit;
     int i;
     ptruint *linear;
 
-    nvars = table->size; //矩阵的行列数就是子表的数目
-    wordsPerRow = ((nvars - 1) >> LOGBPL) + 1; //算出每一行要多少个字
-    words = wordsPerRow * nvars; //总共要多少个字
-    table->linear = linear = ALLOC(ptruint,words); //这个矩阵是一维数组,那就是每个单元都是bit大,一共有words*64(32)多个单元
+    nvars = table->size; //子表的数量,变量的数量
+    wordsPerRow = ((nvars - 1) >> LOGBPL) + 1; //算出每一行要多少个字,因为每个bit是代表一个变量
+    words = wordsPerRow * nvars; //列*行,算出总共要多少个字
+    table->linear = linear = ALLOC(ptruint,words); //用一维空间来表示矩阵,分配空间
     if (linear == NULL) {
     table->errorCode = CUDD_MEMORY_OUT;
     return(0);
     }
     table->memused += words * sizeof(ptruint); //这个是更新ddmanger的内存占用
-    table->linearSize = nvars; //更新ddm的矩阵的行列数
+    table->linearSize = nvars; //更新ddm的矩阵的行数(列数是多少个bit表示)
     for (i = 0; i < words; i++) linear[i] = 0; //把矩阵所有单元都置0
-    for (i = 0; i < nvars; i++) {
+    for (i = 0; i < nvars; i++) { //对矩阵每行进行处理
 	word = wordsPerRow * i + (i >> LOGBPL); //这是算它对第几个字进行赋值
 	bit  = i & (BPL-1); //这是算它在字里面的哪一个位赋值
 	linear[word] = (ptruint) 1 << bit; //对矩阵进行赋值
@@ -862,28 +866,28 @@ ddLinearAndSiftingAux(
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
 
     } else if (x == xHigh) {
-	moveUp = ddLinearAndSiftingUp(table,x,xLow,NULL); //选中变量往线性筛选
+	moveUp = ddLinearAndSiftingUp(table,x,xLow,NULL); //选中变量往上线性筛选
 	/* At this point x --> xLow unless bounding occurred. */
 	if (moveUp == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
 	/* Move backward and stop at best position. */
 	result = ddLinearAndSiftingBackward(table,initialSize,moveUp); //回到记录到的最好位置
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
 
-    } else if ((x - xLow) > (xHigh - x)) { /* must go down first: shorter */ //x离下边界更近,往下走
-	moveDown = ddLinearAndSiftingDown(table,x,xHigh,NULL); //记录下移动顺序和变换后的大小
+    } else if ((x - xLow) > (xHigh - x)) { /* must go down first: shorter */ //x离下边界更近,先往下走
+	moveDown = ddLinearAndSiftingDown(table,x,xHigh,NULL); //先往下走,记录下移动顺序和变换后的大小
 	/* At this point x --> xHigh unless bounding occurred. */
 	if (moveDown == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
-	moveUp = ddUndoMoves(table,moveDown); //返回向上移动的序列
+	moveUp = ddUndoMoves(table,moveDown); //还原x到原始位置,返回的是边界到原始位置的变换记录链表
 #ifdef DD_DEBUG
 	assert(moveUp == NULL || moveUp->x == (DdHalfWord) x);
 #endif
-	moveUp = ddLinearAndSiftingUp(table,x,xLow,moveUp); //接着向上移动
+	moveUp = ddLinearAndSiftingUp(table,x,xLow,moveUp); //接着向上移动,直到上边界
 	if (moveUp == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
 	/* Move backward and stop at best position. */
-	result = ddLinearAndSiftingBackward(table,initialSize,moveUp); //回到最好位置
+	result = ddLinearAndSiftingBackward(table,initialSize,moveUp); //从整一条下边界到上边界的记录列表中,找到最好位置,回到最好位置
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
 
-    } else { /* must go up first: shorter */ //优先向上移动
+    } else { /* must go up first: shorter */ //优先向上移动,跟优先向下移动的情况一致
 	moveUp = ddLinearAndSiftingUp(table,x,xLow,NULL);
 	/* At this point x --> xLow unless bounding occurred. */
 	if (moveUp == (Move *) CUDD_OUT_OF_MEM) goto ddLinearAndSiftingAuxOutOfMem;
@@ -898,12 +902,12 @@ ddLinearAndSiftingAux(
 	if (!result) goto ddLinearAndSiftingAuxOutOfMem;
     }
 
-    while (moveDown != NULL) {
+    while (moveDown != NULL) { //遍历记录链,释放这两条记录列表的作用
 	move = moveDown->next;
-	cuddDeallocMove(table, moveDown);
+	cuddDeallocMove(table, moveDown); //内存先不释放,链的结点先放在free链上,要用新结点的时候就不用新建空间了
 	moveDown = move;
     }
-    while (moveUp != NULL) {
+    while (moveUp != NULL) { //同上
 	move = moveUp->next;
 	cuddDeallocMove(table, moveUp);
 	moveUp = move;
@@ -938,7 +942,7 @@ ddLinearAndSiftingAuxOutOfMem:
 
   @sideeffect None
 
-*/
+*/ //跟ddLinearAndSiftingDown()一样
 static Move *
 ddLinearAndSiftingUp(
   DdManager * table,
@@ -1082,20 +1086,20 @@ ddLinearAndSiftingDown(
     int		zindex;
 #endif
 
-    moves = prevMoves;
+    moves = prevMoves; //维持以前的变换记录链,以后新的记录插到这个链
     /* Initialize R */
     xindex = table->invperm[x]; //在列表中取出变量X的index
-    limitSize = size = table->keys - table->isolated; //最大结点处理数
+    limitSize = size = table->keys - table->isolated; //记录一下当前的dd结点数
     R = 0;
     for (y = xHigh; y > x; y--) {
 	yindex = table->invperm[y]; //取出变量y的index
-	if (cuddTestInteract(table,xindex,yindex)) { //如果x和y是interact的话
+	if (cuddTestInteract(table,xindex,yindex)) { //如果x和y是interact的话，说明可以LT，更新一下要处理结点数
 	    isolated = table->vars[yindex]->ref == 1; //如果变量y的引用计数等于1的话，它就是isolated的
 	    R += table->subtables[y].keys - isolated; //更新要处理的结点个数
 	}
     }
 
-    y = cuddNextHigh(table,x); //下一个子表(变量)
+    y = cuddNextHigh(table,x); //下一个子表(变量)（index+1）
     while (y <= xHigh && size - R < limitSize) { //y在边界内,且需要执行变换
 #ifdef DD_DEBUG
 	checkR = 0;
@@ -1118,16 +1122,16 @@ ddLinearAndSiftingDown(
 	}
 	size = cuddSwapInPlace(table,x,y); //交换x和y两个变量
 	if (size == 0) goto ddLinearAndSiftingDownOutOfMem;
-	newsize = cuddLinearInPlace(table,x,y);
+	newsize = cuddLinearInPlace(table,x,y); //线性变换两个变量
 	if (newsize == 0) goto ddLinearAndSiftingDownOutOfMem;
-	move = (Move *) cuddDynamicAllocNode(table);
+	move = (Move *) cuddDynamicAllocNode(table); //生成一个新的变换记录,后面会插入到变换记录列表
 	if (move == NULL) goto ddLinearAndSiftingDownOutOfMem;
 	move->x = x;
 	move->y = y;
-	move->next = moves;
-	moves = move;
-	move->flags = CUDD_SWAP_MOVE;
-	if (newsize >= size) {
+	move->next = moves; //把这个记录加入到swap/LT记录列表
+	moves = move; //更新变换记录列表的指针,moves保持指向最新一次变换记录上
+	move->flags = CUDD_SWAP_MOVE; //更新变换的类型
+	if (newsize >= size) { //如果LT比swap产生的结点数,就再次执行LT以抵消LT
 	    /* Undo transformation. The transformation we apply is
 	    ** its own inverse. Hence, we just apply the transformation
 	    ** again.
@@ -1137,18 +1141,18 @@ ddLinearAndSiftingDown(
 	    if (newsize != size) {
 		(void) fprintf(table->out,"Change in size after identity transformation! From %d to %d\n",size,newsize);
 	    }
-	} else if (cuddTestInteract(table,xindex,yindex)) {
-	    size = newsize;
-	    move->flags = CUDD_LINEAR_TRANSFORM_MOVE;
-	    cuddUpdateInteractionMatrix(table,xindex,yindex);
+	} else if (cuddTestInteract(table,xindex,yindex)) { //如果LT效果更好,并且执行LT的两个变量是interact的话,要更新一下interact矩阵
+	    size = newsize; //采用LT的size
+	    move->flags = CUDD_LINEAR_TRANSFORM_MOVE; //变换记录也更新为LT
+	    cuddUpdateInteractionMatrix(table,xindex,yindex); //更新一下interact矩阵
 	}
-	move->size = size;
+	move->size = size; 
 	if ((double) size > (double) limitSize * table->maxGrowth) break;
-	if (size < limitSize) limitSize = size;
-	x = y;
+	if (size < limitSize) limitSize = size; //更新一下限制大小(用来保证下次变换不超过一个阀值)
+	x = y; //轮到下两个变量
 	y = cuddNextHigh(table,x);
     }
-    return(moves);
+    return(moves); //成功是返回变换记录列表
 
 ddLinearAndSiftingDownOutOfMem:
     while (moves != NULL) {
@@ -1182,21 +1186,21 @@ ddLinearAndSiftingBackward(
     Move *move;
     int	res;
 
-    for (move = moves; move != NULL; move = move->next) {
+    for (move = moves; move != NULL; move = move->next) { //遍历变换记录列表
 	if (move->size < size) {
-	    size = move->size;
+	    size = move->size; //拿到变换记录列表中最好的size记录(size最小)
 	}
     }
 
-    for (move = moves; move != NULL; move = move->next) {
-	if (move->size == size) return(1);
-	if (move->flags == CUDD_LINEAR_TRANSFORM_MOVE) {
-	    res = cuddLinearInPlace(table,(int)move->x,(int)move->y);
+    for (move = moves; move != NULL; move = move->next) { //遍历变换记录列表
+	if (move->size == size) return(1); //当前处理的变换记录跟最好记录一样,直接返回1
+	if (move->flags == CUDD_LINEAR_TRANSFORM_MOVE) { //如果记录是LT记录
+	    res = cuddLinearInPlace(table,(int)move->x,(int)move->y); //再次执行LT,就抵消LT
 	    if (!res) return(0);
 	}
-	res = cuddSwapInPlace(table,(int)move->x,(int)move->y);
+	res = cuddSwapInPlace(table,(int)move->x,(int)move->y); //在做LinearAndSifting的时候一定会执行swap(LT有可能没有),所以还原的时候要再次swap
 	if (!res) return(0);
-	if (move->flags == CUDD_INVERSE_TRANSFORM_MOVE) {
+	if (move->flags == CUDD_INVERSE_TRANSFORM_MOVE) { //这是对IT的还原
 	    res = cuddLinearInPlace(table,(int)move->x,(int)move->y);
 	    if (!res) return(0);
 	}
@@ -1226,24 +1230,24 @@ ddUndoMoves(
     Move *invmove;
     int	size;
 
-    for (move = moves; move != NULL; move = move->next) {
-	invmove = (Move *) cuddDynamicAllocNode(table);
+    for (move = moves; move != NULL; move = move->next) { //对所有变换记录遍历,以抵消所以变换
+	invmove = (Move *) cuddDynamicAllocNode(table); //创建一个反向移动的记录
 	if (invmove == NULL) goto ddUndoMovesOutOfMem;
 	invmove->x = move->x;
 	invmove->y = move->y;
-	invmove->next = invmoves;
-	invmoves = invmove;
-	if (move->flags == CUDD_SWAP_MOVE) {
-	    invmove->flags = CUDD_SWAP_MOVE;
-	    size = cuddSwapInPlace(table,(int)move->x,(int)move->y);
+	invmove->next = invmoves; //新的记录插入到链
+	invmoves = invmove; //invmoves指针保持在最新记录上
+	if (move->flags == CUDD_SWAP_MOVE) { //变换类型是swap的情况
+	    invmove->flags = CUDD_SWAP_MOVE; //更新变换类型
+	    size = cuddSwapInPlace(table,(int)move->x,(int)move->y); //还原变换
 	    if (!size) goto ddUndoMovesOutOfMem;
-	} else if (move->flags == CUDD_LINEAR_TRANSFORM_MOVE) {
-	    invmove->flags = CUDD_INVERSE_TRANSFORM_MOVE;
-	    size = cuddLinearInPlace(table,(int)move->x,(int)move->y);
+	} else if (move->flags == CUDD_LINEAR_TRANSFORM_MOVE) { //变换类型是LT的情况
+	    invmove->flags = CUDD_INVERSE_TRANSFORM_MOVE; //更新变换类型
+	    size = cuddLinearInPlace(table,(int)move->x,(int)move->y); //还原LT产生的效果
 	    if (!size) goto ddUndoMovesOutOfMem;
-	    size = cuddSwapInPlace(table,(int)move->x,(int)move->y);
+	    size = cuddSwapInPlace(table,(int)move->x,(int)move->y); //还原swap效果
 	    if (!size) goto ddUndoMovesOutOfMem;
-	} else { /* must be CUDD_INVERSE_TRANSFORM_MOVE */
+	} else { /* must be CUDD_INVERSE_TRANSFORM_MOVE */ //InvT的情况(IT就是先LT再swap,一般是先swap再LT)
 #ifdef DD_DEBUG
 	    (void) fprintf(table->err,"Unforseen event in ddUndoMoves!\n");
 #endif
@@ -1253,10 +1257,10 @@ ddUndoMoves(
 	    size = cuddLinearInPlace(table,(int)move->x,(int)move->y);
 	    if (!size) goto ddUndoMovesOutOfMem;
 	}
-	invmove->size = size;
+	invmove->size = size; //更新还原记录的大小
     }
 
-    return(invmoves);
+    return(invmoves); //根据变换记录列表完成了变换的抵消,并返回抵消记录列表
 
 ddUndoMovesOutOfMem:
     while (invmoves != NULL) {
@@ -1285,13 +1289,13 @@ cuddXorLinear(
 {
     int i;
     int nvars = table->size;
-    int wordsPerRow = ((nvars - 1) >> LOGBPL) + 1;
-    int xstart = wordsPerRow * x;
-    int ystart = wordsPerRow * y;
-    ptruint *linear = table->linear;
+    int wordsPerRow = ((nvars - 1) >> LOGBPL) + 1; //用一个bit表示一个变量,算出矩阵每行需要几个word(64bit/32bit)
+    int xstart = wordsPerRow * x; //定位到x行
+    int ystart = wordsPerRow * y; //定位到y行
+    ptruint *linear = table->linear; //取出线性矩阵
 
-    for (i = 0; i < wordsPerRow; i++) {
-	linear[xstart+i] ^= linear[ystart+i];
+    for (i = 0; i < wordsPerRow; i++) { //把x变量所在的行(x行)的每个字拿出来处理
+	linear[xstart+i] ^= linear[ystart+i]; //x->x XOR y
     }
 
 } /* end of cuddXorLinear */

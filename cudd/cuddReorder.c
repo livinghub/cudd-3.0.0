@@ -367,11 +367,11 @@ cuddDynamicAllocNode(
     extern DD_OOMFP MMoutOfMemory;
     DD_OOMFP saveHandler;
 
-    if (table->nextFree == NULL) {        /* free list is empty */
+    if (table->nextFree == NULL) {        /* free list is empty */ //如果列表里面没有结点,那就新建一个内存块(可以放1024个结点)
 	/* Try to allocate a new block. */
 	saveHandler = MMoutOfMemory;
 	MMoutOfMemory = table->outOfMemCallback;
-	mem = (DdNodePtr *) ALLOC(DdNode, DD_MEM_CHUNK + 1);
+	mem = (DdNodePtr *) ALLOC(DdNode, DD_MEM_CHUNK + 1); //尝试创建内存块(可以容纳1024个结点)
 	MMoutOfMemory = saveHandler;
 	if (mem == NULL && table->stash != NULL) {
 	    FREE(table->stash);
